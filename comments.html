@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>コメント一覧</title>
+  <style>
+    body { font-family: sans-serif; max-width: 900px; margin: 40px auto; padding: 0 20px; color: #333; }
+    h1 { font-size: 1.6rem; border-bottom: 2px solid #0078d7; padding-bottom: 8px; }
+    .controls { margin: 16px 0; display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+    input[type="text"] { padding: 6px 12px; border: 1px solid #ccc; border-radius: 4px; width: 260px; }
+    button { padding: 6px 16px; background: #0078d7; color: #fff; border: none; border-radius: 4px; cursor: pointer; }
+    button:hover { background: #005fa3; }
+    .slide-group { margin-bottom: 24px; }
+    .slide-label { font-weight: bold; color: #0078d7; font-size: 0.95rem; margin-bottom: 8px; }
+    .comment-card { background: #f9f9f9; border: 1px solid #e0e0e0; border-radius: 6px; padding: 12px 16px; margin-bottom: 8px; }
+    .comment-meta { font-size: 0.8rem; color: #888; margin-bottom: 4px; }
+    .comment-nick { font-weight: bold; color: #333; }
+    .comment-body { margin: 0; line-height: 1.6; }
+    .empty { color: #aaa; text-align: center; padding: 40px; }
+    .loading { text-align: center; padding: 40px; color: #888; }
+    .count { font-size: 0.85rem; color: #888; margin-left: 8px; }
+  </style>
+</head>
+<body>
+  <h1>💬 コメント一覧</h1>
+  <div class="controls">
+    <input type="text" id="waline-url" placeholder="Waline URL (例: https://xxx.vercel.app)" />
+    <input type="text" id="file-base" placeholder="ファイル名 (例: Q1-1)" />
+    <input type="number" id="slide-count" placeholder="スライド数" min="1" value="33" style="width:100px" />
+    <button onclick="loadComments()">読み込む</button>
+  </div>
+  <div id="result"><p class="empty">上のフォームに入力して「読み込む」をクリックしてください</p></div>
+
+  <script>
+    // URLパラメータから自動入力
+    const params = new URLSearchParams(location.search);
+    if (params.get('server')) document.getElementById('waline-url').value = params.get('server');
+    if (params.get('file')) document.getElementById('file-base').value = params.get('file');
+    if (params.get('pages')) document.getElementById('slide-count').value = params.get('pages');
+    if (params.get('server') && params.get('file')) loadComments();
+
+    async function loadComments() {
+      const server = document.getElementById('waline-url').value.trim().replace(/\/$/, '');
+      const fileBase = document.getElementById('file-base').value.trim();
+      const count = parseInt(document.getElementById('slide-count').value) || 33;
+      if (!server || !fileBase) { alert('Waline URL とファイル名を入力してください'); return; }
+
+      const result = document.getElementById('result');
+      result.innerHTML = '<p class="loading">読み込み中...</p>';
+
+      const groups = [];
+      let total = 0;
+      for (let i = 1; i <= count; i++) {
+        try {
+          const path = `/${fileBase}-slide-${i}`;
+          const res = await fetch(`${server}/api/comment?path=${encodeURIComponent(path)}&pageSize=100`);
+          const json = await res.json();
+          if (json.data && json.data.count > 0) {
+            groups.push({ slide: i, path, comments: json.data.data });
+            total += json.data.count;
+          }
+        } catch (e) { /* skip */ }
+      }
+
+      if (groups.length === 0) {
+        result.innerHTML = '<p class="empty">コメントはありません</p>';
+        return;
+      }
+
+      let html = `<p>合計 <strong>${total}</strong> 件のコメント（${groups.length} スライド）</p>`;
+      for (const g of groups) {
+        html += `<div class="slide-group">
+          <div class="slide-label">スライド ${g.slide}<span class="count">${g.comments.length} 件</span></div>`;
+        for (const c of g.comments) {
+          const date = new Date(c.time).toLocaleString('ja-JP');
+          html += `<div class="comment-card">
+            <div class="comment-meta"><span class="comment-nick">${escHtml(c.nick || '匿名')}</span> · ${date}</div>
+            <p class="comment-body">${c.comment}</p>
+          </div>`;
+        }
+        html += '</div>';
+      }
+      result.innerHTML = html;
+    }
+
+    function escHtml(s) {
+      return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+    }
+  </script>
+</body>
+</html>
