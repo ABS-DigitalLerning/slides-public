@@ -47,21 +47,30 @@
       if (!server || !fileBase) { alert('Waline URL とファイル名を入力してください'); return; }
 
       const result = document.getElementById('result');
-      result.innerHTML = '<p class="loading">読み込み中...</p>';
+      result.innerHTML = '<p class="loading">読み込み中... (0/' + count + ')</p>';
 
-      const groups = [];
-      let total = 0;
-      for (let i = 1; i <= count; i++) {
-        try {
-          const path = `/${fileBase}-slide-${i}`;
-          const res = await fetch(`${server}/api/comment?path=${encodeURIComponent(path)}&pageSize=100`);
-          const json = await res.json();
-          if (json.data && json.data.count > 0) {
-            groups.push({ slide: i, path, comments: json.data.data });
-            total += json.data.count;
-          }
-        } catch (e) { /* skip */ }
-      }
+      let done = 0;
+      const fetches = Array.from({ length: count }, (_, idx) => {
+        const i = idx + 1;
+        const path = `/${fileBase}-slide-${i}`;
+        return fetch(`${server}/api/comment?path=${encodeURIComponent(path)}&pageSize=100`)
+          .then(r => r.json())
+          .then(json => {
+            done++;
+            if (done % 5 === 0 || done === count) {
+              result.innerHTML = `<p class="loading">読み込み中... (${done}/${count})</p>`;
+            }
+            if (json.data && json.data.count > 0) {
+              return { slide: i, path, comments: json.data.data, count: json.data.count };
+            }
+            return null;
+          })
+          .catch(() => null);
+      });
+
+      const results = await Promise.all(fetches);
+      const groups = results.filter(Boolean).sort((a, b) => a.slide - b.slide);
+      let total = groups.reduce((s, g) => s + g.count, 0);
 
       if (groups.length === 0) {
         result.innerHTML = '<p class="empty">コメントはありません</p>';
